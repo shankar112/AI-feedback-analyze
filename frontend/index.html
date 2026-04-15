@@ -72,6 +72,7 @@
   </main>
 
   <script>
+    const API_BASE_URL = 'https://ai-feedback-analyze.onrender.com';
     const feedbackInput = document.getElementById('feedbackInput');
     const analyzeButton = document.getElementById('analyzeButton');
     const buttonLabel = document.getElementById('buttonLabel');
@@ -172,7 +173,7 @@
       setLoading(true);
 
       try {
-        const response = await fetch('http://127.0.0.1:8000/api/analyze-feedback', {
+        const response = await fetch(`${API_BASE_URL}/api/analyze-feedback`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
