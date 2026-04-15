@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Feedback Analyzer</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink: '#1f2937',
+            mist: '#f7f4ea',
+            clay: '#d97706',
+            pine: '#166534',
+            rosewood: '#991b1b',
+            slatefog: '#64748b'
+          },
+          boxShadow: {
+            panel: '0 20px 45px rgba(31, 41, 55, 0.12)'
+          }
+        }
+      }
+    };
+  </script>
+</head>
+<body class="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.18),_transparent_32%),linear-gradient(135deg,_#f7f4ea_0%,_#fffdf7_48%,_#eef2f7_100%)] text-ink">
+  <main class="mx-auto flex min-h-screen max-w-6xl flex-col px-4 py-10 sm:px-6 lg:px-8">
+    <section class="mb-8 overflow-hidden rounded-[2rem] border border-white/70 bg-white/80 p-8 shadow-panel backdrop-blur xl:p-10">
+      <div>
+        <p class="mb-3 inline-flex items-center rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-amber-800">Feedback Analyzer</p>
+        <h1 class="max-w-3xl text-4xl font-black tracking-tight text-slate-900 sm:text-5xl">Turn raw feedback into sentiment, signals, and a ready-to-send reply.</h1>
+        <p class="mt-4 max-w-2xl text-base leading-7 text-slate-600 sm:text-lg">Paste customer feedback, run a single analysis, and review structured language cues with a polished follow-up email.</p>
+      </div>
+    </section>
+
+    <section class="grid gap-8 lg:grid-cols-[0.9fr_1.1fr]">
+      <div class="rounded-[2rem] border border-white/70 bg-white/85 p-6 shadow-panel backdrop-blur sm:p-8">
+        <label for="feedbackInput" class="mb-4 block text-lg font-bold text-slate-900">Drop Feedback Here</label>
+        <textarea id="feedbackInput" class="h-72 w-full rounded-[1.5rem] border border-slate-200 bg-slate-50 px-5 py-4 text-base text-slate-800 outline-none transition focus:border-amber-400 focus:ring-4 focus:ring-amber-100" placeholder="Example: The support team was kind and quick, but the checkout flow felt confusing and slow."></textarea>
+
+        <div class="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <button id="analyzeButton" class="inline-flex items-center justify-center gap-3 rounded-full bg-slate-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-400">
+            <span id="buttonLabel">Analyze</span>
+            <span id="buttonSpinner" class="hidden h-5 w-5 animate-spin rounded-full border-2 border-white/40 border-t-white"></span>
+          </button>
+          <p class="text-sm text-slate-500">The button locks during analysis to prevent duplicate requests.</p>
+        </div>
+
+        <p id="errorMessage" class="mt-4 hidden rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700"></p>
+      </div>
+
+      <div id="resultsCard" class="hidden rounded-[2rem] border border-white/70 bg-white/85 p-6 shadow-panel backdrop-blur sm:p-8">
+        <div id="sentimentBanner" class="rounded-[1.5rem] px-5 py-4"></div>
+
+        <div class="mt-6 overflow-hidden rounded-[1.5rem] border border-slate-200">
+          <div class="grid grid-cols-3 bg-slate-100 text-sm font-bold text-slate-700">
+            <div class="px-4 py-3">Positive Words</div>
+            <div class="border-x border-slate-200 px-4 py-3">Negative Words</div>
+            <div class="px-4 py-3">Neutral Words</div>
+          </div>
+          <div id="wordGrid" class="grid grid-cols-1 divide-y divide-slate-200 md:grid-cols-3 md:divide-y-0 md:divide-x"></div>
+        </div>
+
+        <div class="mt-6">
+          <label for="replyOutput" class="mb-3 block text-sm font-bold uppercase tracking-[0.25em] text-slate-500">Auto Reply Email</label>
+          <textarea id="replyOutput" readonly class="h-56 w-full rounded-[1.5rem] border border-slate-200 bg-slate-50 px-5 py-4 text-sm leading-7 text-slate-700 outline-none"></textarea>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const feedbackInput = document.getElementById('feedbackInput');
+    const analyzeButton = document.getElementById('analyzeButton');
+    const buttonLabel = document.getElementById('buttonLabel');
+    const buttonSpinner = document.getElementById('buttonSpinner');
+    const errorMessage = document.getElementById('errorMessage');
+    const resultsCard = document.getElementById('resultsCard');
+    const sentimentBanner = document.getElementById('sentimentBanner');
+    const wordGrid = document.getElementById('wordGrid');
+    const replyOutput = document.getElementById('replyOutput');
+
+    const sentimentConfig = {
+      Positive: {
+        icon: '?',
+        classes: 'bg-emerald-50 text-emerald-900 ring-1 ring-emerald-200',
+        subtext: 'The feedback leans favorable overall.'
+      },
+      Negative: {
+        icon: '?',
+        classes: 'bg-red-50 text-red-900 ring-1 ring-red-200',
+        subtext: 'The feedback signals dissatisfaction or friction.'
+      },
+      Neutral: {
+        icon: '??',
+        classes: 'bg-slate-100 text-slate-800 ring-1 ring-slate-200',
+        subtext: 'The feedback is balanced or informational.'
+      }
+    };
+
+    const createWordColumn = (items) => {
+      if (!Array.isArray(items) || items.length === 0) {
+        return '<div class="min-h-40 px-4 py-4 text-sm text-slate-400">No items returned.</div>';
+      }
+
+      const chips = items.map((item) => `
+        <span class="rounded-full bg-white px-3 py-1 text-sm font-medium text-slate-700 ring-1 ring-slate-200">${escapeHtml(item)}</span>
+      `).join('');
+
+      return `<div class="min-h-40 px-4 py-4"><div class="flex flex-wrap gap-2">${chips}</div></div>`;
+    };
+
+    const escapeHtml = (value) => String(value)
+      .replaceAll('&', '&amp;')
+      .replaceAll('<', '&lt;')
+      .replaceAll('>', '&gt;')
+      .replaceAll('"', '&quot;')
+      .replaceAll("'", '&#39;');
+
+    const setLoading = (isLoading) => {
+      analyzeButton.disabled = isLoading;
+      buttonLabel.textContent = isLoading ? 'Analyzing' : 'Analyze';
+      buttonSpinner.classList.toggle('hidden', !isLoading);
+    };
+
+    const showError = (message) => {
+      errorMessage.textContent = message;
+      errorMessage.classList.remove('hidden');
+    };
+
+    const clearError = () => {
+      errorMessage.textContent = '';
+      errorMessage.classList.add('hidden');
+    };
+
+    const renderResults = (data) => {
+      const config = sentimentConfig[data.overall_sentiment] || sentimentConfig.Neutral;
+      sentimentBanner.className = `rounded-[1.5rem] px-5 py-4 ${config.classes}`;
+      sentimentBanner.innerHTML = `
+        <div class="flex items-start gap-4">
+          <div class="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/70 text-3xl">${config.icon}</div>
+          <div>
+            <p class="text-sm font-semibold uppercase tracking-[0.25em] opacity-70">Overall Sentiment</p>
+            <h2 class="mt-1 text-2xl font-black">${escapeHtml(data.overall_sentiment)}</h2>
+            <p class="mt-1 text-sm opacity-80">${config.subtext}</p>
+          </div>
+        </div>
+      `;
+
+      wordGrid.innerHTML = [
+        createWordColumn(data.positive_words),
+        createWordColumn(data.negative_words),
+        createWordColumn(data.neutral_words)
+      ].join('');
+
+      replyOutput.value = data.auto_reply_email || '';
+      resultsCard.classList.remove('hidden');
+    };
+
+    analyzeButton.addEventListener('click', async () => {
+      const feedback = feedbackInput.value.trim();
+      clearError();
+
+      if (!feedback) {
+        showError('Enter feedback before running analysis.');
+        resultsCard.classList.add('hidden');
+        return;
+      }
+
+      setLoading(true);
+
+      try {
+        const response = await fetch('http://127.0.0.1:8000/api/analyze-feedback', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ feedback })
+        });
+
+        let payload = null;
+        try {
+          payload = await response.json();
+        } catch {
+          payload = null;
+        }
+
+        if (!response.ok) {
+          const message = payload && payload.detail ? payload.detail : 'Analysis failed. Check the backend and try again.';
+          throw new Error(message);
+        }
+
+        renderResults(payload);
+      } catch (error) {
+        resultsCard.classList.add('hidden');
+        showError(error.message || 'Unable to reach the analysis service.');
+      } finally {
+        setLoading(false);
+      }
+    });
+  </script>
+</body>
+</html>
